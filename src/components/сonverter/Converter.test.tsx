@@ -2,6 +2,7 @@ import React from 'react'
 import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { renderWithRedux } from '../../test/utils'
 import Converter from './Converter'
+import test, { describe } from 'node:test'
 
 describe('Converter', () => {
   test('рендерит поля и валюты при первом запуске', () => {
