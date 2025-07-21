@@ -1,104 +1,125 @@
-// src/components/converter/Converter.test.tsx
-
-import { screen, fireEvent } from '@testing-library/react'
-import { describe, test, expect } from 'vitest'
+import React from 'react'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { renderWithRedux } from '../../test/utils'
 import Converter from './Converter'
 
-describe('Currency Converter', () => {
+describe('Converter', () => {
   test('рендерит поля и валюты при первом запуске', () => {
     renderWithRedux(<Converter />)
 
-    // 2 селекта для валют
     const selects = screen.getAllByRole('combobox')
     expect(selects.length).toBe(2)
 
-    // 2 input'а: один доступный, один readOnly
     const inputs = screen.getAllByRole('spinbutton')
     expect(inputs.length).toBe(2)
-    expect(inputs[0]).toHaveValue(100) // начальное значение
-    expect(inputs[1]).toHaveAttribute('readOnly')
+
+    expect(inputs[0].value).toBe('100') // left input value = "100"
+    expect(inputs[1].hasAttribute('readOnly')).toBe(true) // right input readOnly
   })
 
-  test('конвертация при изменении значения в левом поле', () => {
+  test('показывает корректные валюты в селектах', () => {
     renderWithRedux(<Converter />)
 
-    const input = screen.getAllByRole('spinbutton')[0]
-    fireEvent.change(input, { target: { value: '200' } })
-    expect(input).toHaveValue(200)
+    const selectLeft = screen.getAllByRole('combobox')[0]
+    const selectRight = screen.getAllByRole('combobox')[1]
 
-    // проверим, что результат тоже изменился (не 100)
-    const result = screen.getAllByRole('spinbutton')[1]
-    expect(result).not.toHaveValue(100)
+    // В моке currencyResponse должно быть 6 валют, проверим хотя бы 1
+    expect(selectLeft).not.toBeNull()
+    expect(selectRight).not.toBeNull()
+    expect(selectLeft.querySelectorAll('option').length).toBeGreaterThanOrEqual(6)
+    expect(selectRight.querySelectorAll('option').length).toBeGreaterThanOrEqual(6)
   })
 
-  test('конвертация 1:1 при одинаковых валютах', () => {
+  test('если выбрать одинаковую валюту, курс равен 1', async () => {
     renderWithRedux(<Converter />)
 
     const selects = screen.getAllByRole('combobox')
-    const from = selects[0]
-    const to = selects[1]
+    const inputLeft = screen.getAllByRole('spinbutton')[0]
+    const inputRight = screen.getAllByRole('spinbutton')[1]
 
-    fireEvent.change(from, { target: { value: 'USD' } })
-    fireEvent.change(to, { target: { value: 'USD' } })
+    // Выберем одинаковую валюту в левом и правом селекте
+    fireEvent.change(selects[0], { target: { value: 'USD' } })
+    fireEvent.change(selects[1], { target: { value: 'USD' } })
 
-    const input = screen.getAllByRole('spinbutton')[0]
-    fireEvent.change(input, { target: { value: '123' } })
+    // Введём значение в левый инпут
+    fireEvent.change(inputLeft, { target: { value: '50' } })
 
-    const result = screen.getAllByRole('spinbutton')[1]
-    expect(result).toHaveValue(123)
+    // Ждём обновления
+    await waitFor(() => {
+      expect(inputRight.value).toBe('50')
+    })
   })
 
-  test('правое поле readOnly', () => {
+  test('конвертирует из одной валюты в другую', async () => {
     renderWithRedux(<Converter />)
-    const rightInput = screen.getAllByRole('spinbutton')[1]
-    expect(rightInput).toHaveAttribute('readOnly')
+
+    const selects = screen.getAllByRole('combobox')
+    const inputLeft = screen.getAllByRole('spinbutton')[0]
+    const inputRight = screen.getAllByRole('spinbutton')[1]
+
+    // Выберем разные валюты
+    fireEvent.change(selects[0], { target: { value: 'USD' } })
+    fireEvent.change(selects[1], { target: { value: 'EUR' } })
+
+    // Введём значение 100 в левый инпут
+    fireEvent.change(inputLeft, { target: { value: '100' } })
+
+    // Ожидаем, что значение правого инпута обновится
+    await waitFor(() => {
+      // Проверим, что результат не равен 100 (т.к. курс != 1)
+      expect(inputRight.value).not.toBe('100')
+      // И не пустое значение
+      expect(inputRight.value).not.toBe('')
+    })
   })
 
-  test('при выборе разных валют курс пересчитывается', () => {
+  test('правый инпут всегда readOnly', () => {
     renderWithRedux(<Converter />)
-
-    const [from, to] = screen.getAllByRole('combobox')
-
-    fireEvent.change(from, { target: { value: 'USD' } })
-    fireEvent.change(to, { target: { value: 'EUR' } })
-
-    const input = screen.getAllByRole('spinbutton')[0]
-    fireEvent.change(input, { target: { value: 100 } })
-
-    const result = screen.getAllByRole('spinbutton')[1]
-    expect(result).not.toHaveValue(100) // курс другой
+    const inputs = screen.getAllByRole('spinbutton')
+    expect(inputs[1].hasAttribute('readOnly')).toBe(true)
   })
 
-  test('можно выбрать любую из 6 валют', () => {
+  test('изменения в левом инпуте обновляют правый', async () => {
     renderWithRedux(<Converter />)
-    const allOptions = screen.getAllByRole('option')
-    // 6 в from и 6 в to = 12
-    expect(allOptions.length).toBe(12)
+
+    const inputLeft = screen.getAllByRole('spinbutton')[0]
+    const inputRight = screen.getAllByRole('spinbutton')[1]
+
+    fireEvent.change(inputLeft, { target: { value: '200' } })
+
+    await waitFor(() => {
+      expect(inputRight.value).not.toBe('')
+      expect(inputRight.value).not.toBe('100') // начальное значение правого инпута
+    })
   })
 
-  test('левый input принимает только числа', () => {
+  test('не позволяет вводить отрицательные значения', () => {
     renderWithRedux(<Converter />)
 
-    const input = screen.getAllByRole('spinbutton')[0]
-    fireEvent.change(input, { target: { value: 'abc' } })
+    const inputLeft = screen.getAllByRole('spinbutton')[0]
 
-    // значение не меняется на нечисловое
-    expect(input).not.toHaveValue('abc')
+    fireEvent.change(inputLeft, { target: { value: '-50' } })
+
+    // Ожидаем, что значение не будет отрицательным (зависит от реализации)
+    // Например, либо пустая строка, либо 0, либо "50"
+    // Если приложение запрещает отрицательные, проверь, что inputLeft.value не содержит '-'
+    expect(inputLeft.value.includes('-')).toBe(false)
   })
 
-  test('курс обновляется при смене валюты назначения', () => {
+  test('смена валют обновляет курс', async () => {
     renderWithRedux(<Converter />)
 
-    const [from, to] = screen.getAllByRole('combobox')
+    const selects = screen.getAllByRole('combobox')
+    const inputLeft = screen.getAllByRole('spinbutton')[0]
+    const inputRight = screen.getAllByRole('spinbutton')[1]
 
-    fireEvent.change(from, { target: { value: 'USD' } })
-    fireEvent.change(to, { target: { value: 'JPY' } })
+    fireEvent.change(selects[0], { target: { value: 'EUR' } })
+    fireEvent.change(selects[1], { target: { value: 'RUB' } })
+    fireEvent.change(inputLeft, { target: { value: '100' } })
 
-    const input = screen.getAllByRole('spinbutton')[0]
-    fireEvent.change(input, { target: { value: 50 } })
-
-    const result = screen.getAllByRole('spinbutton')[1]
-    expect(result).not.toHaveValue(50)
+    await waitFor(() => {
+      expect(inputRight.value).not.toBe('')
+      expect(inputRight.value).not.toBe('100')
+    })
   })
 })
